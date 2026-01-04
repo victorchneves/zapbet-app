@@ -17,7 +17,7 @@ export default function PaywallModal({ isOpen, onClose, context = 'general' }) {
                 {/* Close Button */}
                 <button
                     onClick={onClose}
-                    className="absolute top-4 right-4 text-muted-foreground hover:text-white transition-colors"
+                    className="absolute top-4 right-4 text-muted-foreground hover:text-white transition-colors z-50 p-2"
                 >
                     <X className="w-5 h-5" />
                 </button>
@@ -75,7 +75,7 @@ export default function PaywallModal({ isOpen, onClose, context = 'general' }) {
 
                 {/* CTA */}
                 <Button
-                    onClick={handleUpgrade}
+                    onClick={() => window.location.href = 'https://pay.kirvano.com/44b1f1a1-c154-4a1f-bd9e-058defac0e76'}
                     className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-bold h-12 text-base"
                 >
                     Ativar acesso completo
