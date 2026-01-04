@@ -56,7 +56,11 @@ export default function GameDetail() {
                     </div>
 
                     {/* CTA */}
-                    <Button className="w-full bg-primary text-black hover:bg-primary/90 font-bold" size="lg" onClick={() => navigate('/')}>
+                    <Button className="w-full bg-primary text-black hover:bg-primary/90 font-bold" size="lg" onClick={() => navigate('/', {
+                        state: {
+                            query: `Analise o jogo ${fixture.home?.name} vs ${fixture.away?.name} (ID: ${fixture.id}). Quero odds, estatísticas e previsão.`
+                        }
+                    })}>
                         Perguntar à IA sobre esse jogo
                     </Button>
                 </div>

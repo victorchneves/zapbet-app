@@ -1,42 +1,43 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.VITE_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
 export default async function handler(request, response) {
     if (request.method !== 'POST') {
         return response.status(405).json({ error: 'Method not allowed' });
     }
 
-    const authHeader = request.headers.authorization;
-    if (!authHeader) {
-        return response.status(401).json({ error: 'Unauthorized' });
+    const { subscription, user_id } = request.body;
+
+    if (!subscription || !subscription.endpoint) {
+        return response.status(400).json({ error: 'Invalid subscription object' });
     }
 
-    const token = authHeader.replace('Bearer ', '');
+    const supabaseUrl = process.env.VITE_SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    if (authError || !user) return response.status(401).json({ error: 'Invalid Token' });
-
     try {
-        const subscription = request.body;
+        // Upsert subscription
+        // We use endpoint as unique key implicitly, but our schema uses ID.
+        // Let's check if it exists first to avoid duplicates.
 
-        // Save to DB
-        const { error } = await supabase
+        // Actually, our table doesn't have unique constraint on subscription->>endpoint yet?
+        // Let's just insert for now, or match by user_id if we want 1 device per user (no, users have multiple devices).
+        // Best approach: Add logic to cleanup duplicates later. Simple insert for MVP.
+
+        const { data, error } = await supabase
             .from('push_subscriptions')
-            .upsert({
-                user_id: user.id,
-                subscription,
-                updated_at: new Date()
-            }, { onConflict: 'user_id' }); // MVP: One subscription per user (or manage multiple devices later)
+            .insert({
+                user_id: user_id, // Can be null for unauth users? Scheme says NOT NULL. 
+                // So we demand user_id. Frontend must send it.
+                subscription: subscription,
+                enabled: true
+            });
 
         if (error) throw error;
 
-        return response.status(200).json({ success: true });
-
+        return response.status(201).json({ success: true });
     } catch (error) {
-        console.error('Push Subscribe Error:', error);
+        console.error('Subscribe Error:', error);
         return response.status(500).json({ error: error.message });
     }
 }

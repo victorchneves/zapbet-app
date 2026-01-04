@@ -1,72 +1,188 @@
-import { useState, useEffect, useRef } from 'react'
-import { Button } from '../components/ui/button'
-import { Input } from '../components/ui/input'
-import { useChat } from '../hooks/useChat'
-import { useAuth } from '../contexts/AuthContext'
-import { cn } from '../lib/utils'
-import { User, Bot, Menu, Send, LogOut } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
-import PushToggle from '../components/features/PushToggle'
+import { useState, useRef, useEffect } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../services/supabaseClient';
+import { Button } from '../components/ui/button';
+import { Send, Menu, LogOut, User, Bot, AlertTriangle, ArrowLeft } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import FormattedMessage from '../components/ui/FormattedMessage';
+import { cn } from '../lib/utils';
+import PushToggle from '../components/features/PushToggle';
+import PaywallModal from '../components/modals/PaywallModal';
 
 export default function Chat() {
-    const { messages, loading, sendMessage } = useChat()
-    const { user, signOut } = useAuth()
-    const navigate = useNavigate()
-    const [inputText, setInputText] = useState('')
-    const scrollRef = useRef(null)
+    const { user, signOut } = useAuth();
+    const [messages, setMessages] = useState([]);
+    const [input, setInput] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [showPaywall, setShowPaywall] = useState(false);
+    const messagesEndRef = useRef(null);
+    const navigate = useNavigate();
+    const location = useLocation();
+
+    // 1. Load History (Thread)
+    useEffect(() => {
+        if (!user) return;
+
+        const loadThread = async () => {
+            const { data, error } = await supabase
+                .from('ai_threads')
+                .select('*')
+                .eq('user_id', user.id)
+                .single();
+
+            if (data?.messages) {
+                setMessages(data.messages);
+            }
+        };
+
+        loadThread();
+    }, [user]);
+
+    // 2. Handle Initial Prompt from Navigation
+    useEffect(() => {
+        if (location.state?.query && messages.length === 0) {
+            handleInitialQuery(location.state.query);
+        }
+    }, [location.state, messages.length]);
+
+    const handleInitialQuery = async (query) => {
+        // Add User Message
+        const userMsg = { id: Date.now().toString(), role: 'user', content: query };
+        setMessages([userMsg]);
+        setIsLoading(true);
+
+        try {
+            // Call API
+            const res = await fetch('/api/ai/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
+                },
+                body: JSON.stringify({
+                    message: query,
+                    context: { fixtureId: location.state?.fixtureId }
+                })
+            });
+
+            if (!res.ok) {
+                if (res.status === 429) {
+                    const data = await res.json();
+                    if (data.premium_required) {
+                        setShowPaywall(true);
+                        setIsLoading(false);
+                        return;
+                    }
+                }
+                throw new Error('Falha na resposta da IA');
+            }
+
+            const data = await res.json();
+
+            // Add Assistant Message
+            const aiMsg = { id: Date.now() + 1, role: 'assistant', content: data.response };
+            setMessages(prev => [...prev, aiMsg]);
+
+        } catch (error) {
+            console.error('Chat Error:', error);
+            setMessages(prev => [...prev, {
+                id: Date.now() + 2,
+                role: 'assistant',
+                content: '⚠️ Ocorreu um erro ao processar sua análise. Tente novamente.'
+            }]);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const scrollToBottom = () => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    };
 
     useEffect(() => {
-        if (!user && !loading) {
-            navigate('/login');
-        }
-    }, [user, loading, navigate]);
-
-    useEffect(() => {
-        if (scrollRef.current) {
-            scrollRef.current.scrollIntoView({ behavior: 'smooth' })
-        }
-    }, [messages])
-
-    const handleSend = () => {
-        if (!inputText.trim()) return
-        sendMessage(inputText)
-        setInputText('')
-    }
-
-    const handleKeyDown = (e) => {
-        if (e.key === 'Enter') {
-            handleSend()
-        }
-    }
+        scrollToBottom();
+    }, [messages]);
 
     const handleSignOut = async () => {
         await signOut();
         navigate('/login');
-    }
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!input.trim() || isLoading) return;
+
+        const userMsg = { id: Date.now().toString(), role: 'user', content: input };
+        setMessages(prev => [...prev, userMsg]);
+        setInput('');
+        setIsLoading(true);
+
+        try {
+            const res = await fetch('/api/ai/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
+                },
+                body: JSON.stringify({
+                    message: input,
+                    context: { fixtureId: location.state?.fixtureId } // Persist context if exists
+                })
+            });
+
+            if (!res.ok) {
+                if (res.status === 429) {
+                    const data = await res.json();
+                    if (data.premium_required) {
+                        setShowPaywall(true);
+                        setIsLoading(false);
+                        return;
+                    }
+                }
+                throw new Error('Falha na resposta da IA');
+            }
+
+            const data = await res.json();
+            const aiMsg = { id: Date.now() + 1, role: 'assistant', content: data.response };
+
+            setMessages(prev => [...prev, aiMsg]);
+
+        } catch (error) {
+            console.error(error);
+            setMessages(prev => [...prev, {
+                id: Date.now() + 2,
+                role: 'assistant',
+                content: '⚠️ Erro ao conectar com o modelo. Tente novamente.'
+            }]);
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     return (
         <div className="flex flex-col h-screen bg-background text-foreground">
             {/* Header */}
-            <header className="p-4 border-b border-border bg-card flex items-center justify-between sticky top-0 z-10 shadow-md">
+            <header className="flex items-center justify-between px-4 py-3 border-b border-border bg-card/50 backdrop-blur-md sticky top-0 z-10">
                 <div className="flex items-center gap-3">
-                    <div className="h-9 w-9 bg-primary/20 rounded-lg flex items-center justify-center text-primary border border-primary/20">
-                        <Bot size={20} />
-                    </div>
-                    <div>
-                        <h1 className="text-lg font-bold text-white leading-none">ZapBet AI</h1>
-                        <span className="text-xs text-primary font-medium flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" /> Online
-                        </span>
+                    <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')}>
+                        <ArrowLeft className="w-5 h-5 text-muted-foreground" />
+                    </Button>
+                    <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center shadow-lg">
+                            <Bot size={18} className="text-white" />
+                        </div>
+                        <div>
+                            <h1 className="font-bold text-sm leading-tight">ZapBet IA</h1>
+                            <span className="text-[10px] text-green-400 flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" /> Online
+                            </span>
+                        </div>
                     </div>
                 </div>
                 <div className="flex gap-2">
                     <PushToggle />
-                    <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-white" onClick={handleSignOut}>
-                        <LogOut size={20} />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-white" onClick={() => navigate('/dashboard')}>
-                        <Menu size={20} />
-                    </Button>
                 </div>
             </header>
 
@@ -99,48 +215,56 @@ export default function Chat() {
                                 ? "bg-secondary text-white rounded-tr-sm"
                                 : "bg-card border border-border text-gray-200 rounded-tl-sm"
                         )}>
-                            <p>{msg.content}</p>
+                            {msg.role === 'user' ? (
+                                <p>{msg.content}</p>
+                            ) : (
+                                <FormattedMessage content={msg.content} />
+                            )}
                         </div>
                     </div>
                 ))}
 
-                {loading && (
+                {isLoading && (
                     <div className="flex gap-3 animate-pulse">
-                        <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 border border-primary/20">
+                        <div className="h-8 w-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
                             <Bot size={14} className="text-primary" />
                         </div>
-                        <div className="bg-card border border-border rounded-2xl rounded-tl-sm p-3 flex items-center gap-1 h-10 w-16">
-                            <div className="w-1.5 h-1.5 bg-primary/50 rounded-full animate-bounce delay-0" />
-                            <div className="w-1.5 h-1.5 bg-primary/50 rounded-full animate-bounce delay-150" />
-                            <div className="w-1.5 h-1.5 bg-primary/50 rounded-full animate-bounce delay-300" />
+                        <div className="bg-card border border-border rounded-2xl rounded-tl-sm p-4 space-y-2 w-32">
+                            <div className="h-2 bg-white/10 rounded w-full"></div>
+                            <div className="h-2 bg-white/10 rounded w-2/3"></div>
                         </div>
                     </div>
                 )}
-
-                <div ref={scrollRef} />
+                <div ref={messagesEndRef} />
             </main>
 
             {/* Input Area */}
-            <footer className="p-4 border-t border-border bg-background w-full max-w-lg mx-auto">
-                <div className="flex gap-2 relative">
-                    <Input
+            <footer className="p-4 bg-card/50 backdrop-blur-md border-t border-border sticky bottom-0">
+                <form onSubmit={handleSubmit} className="max-w-lg mx-auto relative flex items-center gap-2">
+                    <input
                         type="text"
-                        value={inputText}
-                        onChange={(e) => setInputText(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        placeholder="Pergunte sobre jogos, odds ou estratégias..."
-                        className="bg-card border-border text-white focus-visible:ring-primary pr-12 h-12 rounded-xl"
-                        disabled={loading}
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        placeholder="Pergunte sobre um jogo..."
+                        disabled={isLoading}
+                        className="flex-1 bg-secondary/50 border border-border text-white text-sm rounded-full px-4 py-3 focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground transition-all"
                     />
                     <Button
-                        className="absolute right-1 top-1 h-10 w-10 p-0 rounded-lg bg-primary text-black hover:bg-primary/90 hover:scale-105 transition-all"
-                        onClick={handleSend}
-                        disabled={!inputText.trim() || loading}
+                        type="submit"
+                        size="icon"
+                        disabled={isLoading || !input.trim()}
+                        className="rounded-full w-10 h-10 bg-primary hover:bg-primary/90 transition-all shadow-lg hover:shadow-primary/20"
                     >
                         <Send size={18} />
                     </Button>
-                </div>
+                </form>
             </footer>
+
+            <PaywallModal
+                isOpen={showPaywall}
+                onClose={() => setShowPaywall(false)}
+                context="chat_limit"
+            />
         </div>
-    )
+    );
 }

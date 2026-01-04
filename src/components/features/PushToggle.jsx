@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { subscribeToPush } from '../../services/pushService';
 import { Button } from '../ui/button';
-import { Bell, BellOff } from 'lucide-react';
+import { Bell, BellOff, Loader2 } from 'lucide-react';
 
 export default function PushToggle() {
     const [permission, setPermission] = useState(Notification.permission);
@@ -14,11 +14,11 @@ export default function PushToggle() {
             setPermission(result);
             if (result === 'granted') {
                 await subscribeToPush();
-                alert('Notificações ativadas! Fique atento às Calls.');
+                // alert('Notificações ativadas! Fique atento às Calls.');
             }
         } catch (error) {
             console.error(error);
-            alert('Erro ao ativar notificações. Verifique as permissões do navegador.');
+            alert('Erro ao ativar notificações. Tente novamente.');
         } finally {
             setLoading(false);
         }

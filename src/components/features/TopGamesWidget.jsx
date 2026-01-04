@@ -55,7 +55,11 @@ export default function TopGamesWidget() {
                             </div>
                             <button
                                 className="w-full py-2 bg-secondary/50 rounded-lg text-sm font-medium hover:bg-secondary transition-colors text-white"
-                                onClick={() => navigate(`/game/${game.id}`)}
+                                onClick={() => navigate('/', {
+                                    state: {
+                                        query: `Analise o jogo ${game.home?.name} vs ${game.away?.name} (ID: ${game.id})`
+                                    }
+                                })}
                             >
                                 Analisar com IA
                             </button>

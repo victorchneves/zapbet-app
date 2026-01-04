@@ -22,16 +22,20 @@ export const sendMessageToAI = async (message) => {
         });
 
         if (!response.ok) {
+            let errorData;
             const textPromise = response.text();
+
             try {
-                const errorData = JSON.parse(await textPromise);
-                throw new Error(errorData.error || 'Erro na comunicação com a IA');
+                errorData = JSON.parse(await textPromise);
             } catch (jsonError) {
-                // If we can't parse JSON, it might be an HTML error page (timeout, 500, etc.)
+                // If we can't parse JSON, it might be an HTML error page
                 const rawText = await textPromise;
                 console.error('Non-JSON error response:', rawText);
                 throw new Error(`Erro no servidor (${response.status}): Verifique os logs.`);
             }
+
+            // If we parsed successfully, throw the backend error
+            throw new Error(errorData.error || 'Erro na comunicação com a IA');
         }
 
         const data = await response.json();
