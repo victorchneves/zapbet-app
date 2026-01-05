@@ -35,18 +35,26 @@ export default function Chat() {
                 return;
             }
 
-            // Check Unlocked Fixtures
+            // 1. Check Unlocked Fixtures (Simple Query, no Join)
             const today = new Date().toISOString().split('T')[0];
             const { data: unlocked } = await supabase
                 .from('daily_unlocked_fixtures')
-                .select('fixture_id, fixtures(home:teams!home_team_id(name), away:teams!away_team_id(name))')
+                .select('fixture_id')
                 .eq('user_id', user.id)
                 .eq('date', today)
                 .single(); // Limit 1 per day
 
             if (unlocked) {
-                const home = unlocked.fixtures?.home?.name || 'Time A';
-                const away = unlocked.fixtures?.away?.name || 'Time B';
+                // 2. Fetch Fixture Details Manually (Bypass FK cache issue)
+                const { data: fixture } = await supabase
+                    .from('fixtures')
+                    .select('home:teams!home_team_id(name), away:teams!away_team_id(name)')
+                    .eq('id', unlocked.fixture_id)
+                    .single();
+
+                const home = fixture?.home?.name || 'Time A';
+                const away = fixture?.away?.name || 'Time B';
+
                 setDailyStatus({
                     type: 'used',
                     fixtureId: unlocked.fixture_id,
@@ -116,9 +124,7 @@ export default function Chat() {
 
             {/* Chat Area */}
             <main className="flex-1 p-4 overflow-y-auto w-full max-w-lg mx-auto space-y-4">
-                {/* ... existing messages ... */}
                 {messages.length === 0 && (
-                    // ... rest of file
                     <div className="text-center text-muted-foreground mt-10 text-sm animate-in fade-in zoom-in duration-500">
                         <p className="mb-2">"O que tem hoje de interessante?"</p>
                         <p>"Quero algo agressivo hoje"</p>
