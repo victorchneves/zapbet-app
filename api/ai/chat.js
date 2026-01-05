@@ -62,43 +62,11 @@ export default async function handler(request, response) {
             throw new Error(`Failed to fetch profile: ${JSON.stringify(profileError)}`);
         }
 
-        // 2.5. Check subscription status and enforce FREE tier limits
+        // 2.5. Check subscription status
         const isPremium = profile?.subscription_status === 'premium';
 
-        if (!isPremium) {
-            const today = new Date().toISOString().split('T')[0];
-
-            const { data: dailyRecord } = await supabase
-                .from('chat_interactions_daily')
-                .select('interaction_count')
-                .eq('user_id', user.id)
-                .eq('date', today)
-                .single();
-
-            const currentCount = dailyRecord?.interaction_count || 0;
-
-            if (currentCount >= 3) {
-                return response.status(429).json({
-                    error: 'limit_exceeded',
-                    message: 'Limite diário atingido.',
-                    premium_required: true,
-                    interactions_used: currentCount,
-                    interactions_limit: 3
-                });
-            }
-
-            // Increment counter
-            await supabase
-                .from('chat_interactions_daily')
-                .upsert({
-                    user_id: user.id,
-                    date: today,
-                    interaction_count: currentCount + 1,
-                    updated_at: new Date().toISOString()
-                }, {
-                    onConflict: 'user_id,date'
-                });
-        }
+        // [LEGACY LIMIT REMOVED] Switching to Game-Based Limits (1 unlocked game per day)
+        // See 'get_match_details' tool implementation below.
 
         // 3. Find or Create Thread
         // We try to find an active thread for today/current session or just the latest one
@@ -322,6 +290,45 @@ export default async function handler(request, response) {
                         console.log(`[TOOL] Executing get_match_details for ID: ${args.fixture_id}`);
 
                         try {
+                            // [SMART LIMIT LOGIC]
+                            // Check limits before fetching data
+                            if (!isPremium) {
+                                const today = new Date().toISOString().split('T')[0];
+
+                                // Check what matches user has already unlocked today
+                                const { data: existingUnlocks } = await supabase
+                                    .from('daily_unlocked_fixtures')
+                                    .select('fixture_id')
+                                    .eq('user_id', user.id)
+                                    .eq('date', today);
+
+                                const unlockedFixtureIds = existingUnlocks?.map(u => u.fixture_id) || [];
+                                const isNewFixture = !unlockedFixtureIds.includes(args.fixture_id);
+
+                                // If trying to access a 2nd fixture (limit is 1)
+                                if (isNewFixture && unlockedFixtureIds.length >= 1) {
+                                    console.log(`[LIMIT LIMIT] User ${user.id} tried to access 2nd game (ID: ${args.fixture_id})`);
+
+                                    toolOutputs.push({
+                                        tool_call_id: toolCall.id,
+                                        output: JSON.stringify({
+                                            error: "LIMIT_REACHED",
+                                            message: "SYSTEM ALERT: User is on Free Plan. They have already analyzed one match today. They cannot analyze another one. Please politely apologize and ask them to Upgrade to Premium to analyze unlimited matches."
+                                        })
+                                    });
+                                    continue; // Skip the actual fetch
+                                }
+
+                                // If eligible, record this unlock
+                                if (isNewFixture) {
+                                    await supabase.from('daily_unlocked_fixtures').insert({
+                                        user_id: user.id,
+                                        date: today,
+                                        fixture_id: args.fixture_id
+                                    });
+                                }
+                            }
+
                             const details = await getMatchDetails(args.fixture_id, supabase, process.env.API_FOOTBALL_KEY);
                             // Summarize output to save tokens
                             const summary = {
