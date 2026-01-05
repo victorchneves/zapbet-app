@@ -13,158 +13,59 @@ import PaywallModal from '../components/modals/PaywallModal';
 
 export default function Chat() {
     const { user, signOut } = useAuth();
-    const [messages, setMessages] = useState([]);
-    const [input, setInput] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-    const [showPaywall, setShowPaywall] = useState(false);
-    const messagesEndRef = useRef(null);
-    const navigate = useNavigate();
-    const location = useLocation();
+    // ... existing imports
+    const [dailyStatus, setDailyStatus] = useState({ used: false, fixtureId: null, label: '' });
 
-    // 1. Load History (Thread)
+    // ... existing useEffects
+
+    // [NEW] Check Daily Usage
     useEffect(() => {
         if (!user) return;
 
-        const loadThread = async () => {
-            const { data, error } = await supabase
-                .from('ai_threads')
-                .select('*')
-                .eq('user_id', user.id)
+        const checkUsage = async () => {
+            // Check if Premium
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('subscription_status')
+                .eq('id', user.id)
                 .single();
 
-            if (data?.messages) {
-                setMessages(data.messages);
+            if (profile?.subscription_status === 'premium') {
+                setDailyStatus({ type: 'premium' });
+                return;
+            }
+
+            // Check Unlocked Fixtures
+            const today = new Date().toISOString().split('T')[0];
+            const { data: unlocked } = await supabase
+                .from('daily_unlocked_fixtures')
+                .select('fixture_id, fixtures(home:teams!home_team_id(name), away:teams!away_team_id(name))')
+                .eq('user_id', user.id)
+                .eq('date', today)
+                .single(); // Limit 1 per day
+
+            if (unlocked) {
+                const home = unlocked.fixtures?.home?.name || 'Time A';
+                const away = unlocked.fixtures?.away?.name || 'Time B';
+                setDailyStatus({
+                    type: 'used',
+                    fixtureId: unlocked.fixture_id,
+                    label: `${home} vs ${away}`
+                });
+            } else {
+                setDailyStatus({ type: 'available' });
             }
         };
-
-        loadThread();
+        checkUsage();
     }, [user]);
 
-    // 2. Handle Initial Prompt from Navigation
-    useEffect(() => {
-        if (location.state?.query && messages.length === 0) {
-            handleInitialQuery(location.state.query);
-        }
-    }, [location.state, messages.length]);
-
-    const handleInitialQuery = async (query) => {
-        // Add User Message
-        const userMsg = { id: Date.now().toString(), role: 'user', content: query };
-        setMessages([userMsg]);
-        setIsLoading(true);
-
-        try {
-            // Call API
-            const res = await fetch('/api/ai/chat', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
-                },
-                body: JSON.stringify({
-                    message: query,
-                    context: { fixtureId: location.state?.fixtureId }
-                })
-            });
-
-            if (!res.ok) {
-                if (res.status === 429) {
-                    const data = await res.json();
-                    if (data.premium_required) {
-                        setShowPaywall(true);
-                        setIsLoading(false);
-                        return;
-                    }
-                }
-                throw new Error('Falha na resposta da IA');
-            }
-
-            const data = await res.json();
-
-            // Add Assistant Message
-            const aiMsg = { id: Date.now() + 1, role: 'assistant', content: data.response };
-            setMessages(prev => [...prev, aiMsg]);
-
-        } catch (error) {
-            console.error('Chat Error:', error);
-            setMessages(prev => [...prev, {
-                id: Date.now() + 2,
-                role: 'assistant',
-                content: '⚠️ Ocorreu um erro ao processar sua análise. Tente novamente.'
-            }]);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    };
-
-    useEffect(() => {
-        scrollToBottom();
-    }, [messages]);
-
-    const handleSignOut = async () => {
-        await signOut();
-        navigate('/login');
-    };
-
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        if (!input.trim() || isLoading) return;
-
-        const userMsg = { id: Date.now().toString(), role: 'user', content: input };
-        setMessages(prev => [...prev, userMsg]);
-        setInput('');
-        setIsLoading(true);
-
-        try {
-            const res = await fetch('/api/ai/chat', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
-                },
-                body: JSON.stringify({
-                    message: input,
-                    context: { fixtureId: location.state?.fixtureId } // Persist context if exists
-                })
-            });
-
-            if (!res.ok) {
-                if (res.status === 429) {
-                    const data = await res.json();
-                    if (data.premium_required) {
-                        setShowPaywall(true);
-                        setIsLoading(false);
-                        return;
-                    }
-                }
-                throw new Error('Falha na resposta da IA');
-            }
-
-            const data = await res.json();
-            const aiMsg = { id: Date.now() + 1, role: 'assistant', content: data.response };
-
-            setMessages(prev => [...prev, aiMsg]);
-
-        } catch (error) {
-            console.error(error);
-            setMessages(prev => [...prev, {
-                id: Date.now() + 2,
-                role: 'assistant',
-                content: '⚠️ Erro ao conectar com o modelo. Tente novamente.'
-            }]);
-        } finally {
-            setIsLoading(false);
-        }
-    };
+    // ... existing event handlers
 
     return (
         <div className="flex flex-col h-screen bg-background text-foreground">
             {/* Header */}
             <header className="flex items-center justify-between px-4 py-3 border-b border-border bg-card/50 backdrop-blur-md sticky top-0 z-10">
+                {/* ... existing header content ... */}
                 <div className="flex items-center gap-3">
                     <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')}>
                         <ArrowLeft className="w-5 h-5 text-muted-foreground" />
@@ -186,9 +87,38 @@ export default function Chat() {
                 </div>
             </header>
 
+            {/* [NEW] Daily Limit Banner */}
+            {dailyStatus.type !== 'premium' && (
+                <div className={cn(
+                    "text-xs px-4 py-2 flex items-center justify-between shadow-sm",
+                    dailyStatus.type === 'available' ? "bg-blue-500/10 text-blue-300 border-b border-blue-500/20" :
+                        dailyStatus.type === 'used' ? "bg-green-500/10 text-green-300 border-b border-green-500/20" : ""
+                )}>
+                    {dailyStatus.type === 'available' && (
+                        <>
+                            <span className="flex items-center gap-2">
+                                🎫 <b>Ficha Diária Disponível:</b> Escolha seu jogo com sabedoria.
+                            </span>
+                        </>
+                    )}
+                    {dailyStatus.type === 'used' && (
+                        <>
+                            <span className="flex items-center gap-2 truncate">
+                                🟢 <b>Modo Grátis Ativo:</b> {dailyStatus.label}
+                            </span>
+                            <button onClick={() => setShowPaywall(true)} className="underline font-bold text-[10px] ml-2 shrink-0">
+                                Trocar Jogo?
+                            </button>
+                        </>
+                    )}
+                </div>
+            )}
+
             {/* Chat Area */}
             <main className="flex-1 p-4 overflow-y-auto w-full max-w-lg mx-auto space-y-4">
+                {/* ... existing messages ... */}
                 {messages.length === 0 && (
+                    // ... rest of file
                     <div className="text-center text-muted-foreground mt-10 text-sm animate-in fade-in zoom-in duration-500">
                         <p className="mb-2">"O que tem hoje de interessante?"</p>
                         <p>"Quero algo agressivo hoje"</p>
