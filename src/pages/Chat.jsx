@@ -95,7 +95,7 @@ export default function Chat() {
                 setDailyStatus({ type: 'available' });
             }
         };
-        // checkUsage(); // DISABLED TEMPORARILY
+        checkUsage();
     }, [user]);
 
     const handleInitialQuery = async (query) => {
@@ -217,15 +217,14 @@ export default function Chat() {
                         <ArrowLeft className="w-5 h-5 text-muted-foreground" />
                     </Button>
                     <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center shadow-lg">
-                            <Bot size={18} className="text-white" />
-                        </div>
-                        <div>
-                            <h1 className="font-bold text-sm leading-tight">ZapBet IA</h1>
-                            <span className="text-[10px] text-green-400 flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" /> Online
-                            </span>
-                        </div>
+                        <img
+                            src="/zapbet-logo.png"
+                            alt="ZapBet Logo"
+                            className="h-8 object-contain"
+                        />
+                        <span className="text-[10px] text-green-400 flex items-center gap-1 ml-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" /> Online
+                        </span>
                     </div>
                 </div>
                 <div className="flex gap-2">
@@ -233,21 +232,21 @@ export default function Chat() {
                 </div>
             </header>
 
-            {/* [NEW] Daily Limit Banner (TEMPORARILY DISABLED) */}
-            {/* {dailyStatus.type !== 'premium' && (
+            {/* [NEW] Daily Limit Banner */}
+            {dailyStatus.type !== 'premium' && (
                 <div className={cn(
                     "text-xs px-4 py-2 flex items-center justify-between shadow-sm",
-                    dailyStatus.type === 'available' ? "bg-blue-500/10 text-blue-300 border-b border-blue-500/20" : 
-                    dailyStatus.type === 'used' ? "bg-green-500/10 text-green-300 border-b border-green-500/20" : ""
+                    dailyStatus.type === 'available' ? "bg-blue-500/10 text-blue-300 border-b border-blue-500/20" :
+                        dailyStatus.type === 'used' ? "bg-green-500/10 text-green-300 border-b border-green-500/20" : ""
                 )}>
-                   {dailyStatus.type === 'available' && (
+                    {dailyStatus.type === 'available' && (
                         <>
                             <span className="flex items-center gap-2">
                                 🎫 <b>Ficha Diária Disponível:</b> Escolha seu jogo com sabedoria.
                             </span>
                         </>
-                   )}
-                   {dailyStatus.type === 'used' && (
+                    )}
+                    {dailyStatus.type === 'used' && (
                         <>
                             <span className="flex items-center gap-2 truncate">
                                 🟢 <b>Modo Grátis Ativo:</b> {dailyStatus.label}
@@ -258,7 +257,7 @@ export default function Chat() {
                         </>
                     )}
                 </div>
-            )} */}
+            )}
 
             {/* Chat Area */}
             <main className="flex-1 p-4 overflow-y-auto w-full max-w-lg mx-auto space-y-4">
