@@ -13,12 +13,43 @@ import PaywallModal from '../components/modals/PaywallModal';
 
 export default function Chat() {
     const { user, signOut } = useAuth();
-    // ... existing imports
+    const [messages, setMessages] = useState([]);
+    const [input, setInput] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [showPaywall, setShowPaywall] = useState(false);
     const [dailyStatus, setDailyStatus] = useState({ used: false, fixtureId: null, label: '' });
 
-    // ... existing useEffects
+    const messagesEndRef = useRef(null);
+    const navigate = useNavigate();
+    const location = useLocation();
 
-    // [NEW] Check Daily Usage
+    // 1. Load History (Thread)
+    useEffect(() => {
+        if (!user) return;
+
+        const loadThread = async () => {
+            const { data, error } = await supabase
+                .from('ai_threads')
+                .select('*')
+                .eq('user_id', user.id)
+                .single();
+
+            if (data?.messages) {
+                setMessages(data.messages);
+            }
+        };
+
+        loadThread();
+    }, [user]);
+
+    // 2. Handle Initial Prompt from Navigation
+    useEffect(() => {
+        if (location.state?.query && messages.length === 0) {
+            handleInitialQuery(location.state.query);
+        }
+    }, [location.state, messages.length]);
+
+    // [NEW] Check Daily Usage (Refactored to Split Queries)
     useEffect(() => {
         if (!user) return;
 
@@ -64,16 +95,123 @@ export default function Chat() {
                 setDailyStatus({ type: 'available' });
             }
         };
-        // checkUsage(); // DISABLED TO FIX CRASH
+        // checkUsage(); // DISABLED TEMPORARILY
     }, [user]);
 
-    // ... existing event handlers
+    const handleInitialQuery = async (query) => {
+        const userMsg = { id: Date.now().toString(), role: 'user', content: query };
+        setMessages([userMsg]);
+        setIsLoading(true);
+
+        try {
+            const res = await fetch('/api/ai/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
+                },
+                body: JSON.stringify({
+                    message: query,
+                    context: { fixtureId: location.state?.fixtureId }
+                })
+            });
+
+            if (!res.ok) {
+                if (res.status === 429) {
+                    const data = await res.json();
+                    if (data.premium_required) {
+                        setShowPaywall(true);
+                        setIsLoading(false);
+                        return;
+                    }
+                }
+                throw new Error('Falha na resposta da IA');
+            }
+
+            const data = await res.json();
+            const aiMsg = { id: Date.now() + 1, role: 'assistant', content: data.response };
+            setMessages(prev => [...prev, aiMsg]);
+
+        } catch (error) {
+            console.error('Chat Error:', error);
+            setMessages(prev => [...prev, {
+                id: Date.now() + 2,
+                role: 'assistant',
+                content: '⚠️ Ocorreu um erro ao processar sua análise. Tente novamente.'
+            }]);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const scrollToBottom = () => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    };
+
+    useEffect(() => {
+        scrollToBottom();
+    }, [messages]);
+
+    const handleSignOut = async () => {
+        await signOut();
+        navigate('/login');
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!input.trim() || isLoading) return;
+
+        const userMsg = { id: Date.now().toString(), role: 'user', content: input };
+        setMessages(prev => [...prev, userMsg]);
+        setInput('');
+        setIsLoading(true);
+
+        try {
+            const res = await fetch('/api/ai/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
+                },
+                body: JSON.stringify({
+                    message: input,
+                    context: { fixtureId: location.state?.fixtureId }
+                })
+            });
+
+            if (!res.ok) {
+                if (res.status === 429) {
+                    const data = await res.json();
+                    if (data.premium_required) {
+                        setShowPaywall(true);
+                        setIsLoading(false);
+                        return;
+                    }
+                }
+                throw new Error('Falha na resposta da IA');
+            }
+
+            const data = await res.json();
+            const aiMsg = { id: Date.now() + 1, role: 'assistant', content: data.response };
+
+            setMessages(prev => [...prev, aiMsg]);
+
+        } catch (error) {
+            console.error(error);
+            setMessages(prev => [...prev, {
+                id: Date.now() + 2,
+                role: 'assistant',
+                content: '⚠️ Erro ao conectar com o modelo. Tente novamente.'
+            }]);
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     return (
         <div className="flex flex-col h-screen bg-background text-foreground">
             {/* Header */}
             <header className="flex items-center justify-between px-4 py-3 border-b border-border bg-card/50 backdrop-blur-md sticky top-0 z-10">
-                {/* ... existing header content ... */}
                 <div className="flex items-center gap-3">
                     <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')}>
                         <ArrowLeft className="w-5 h-5 text-muted-foreground" />
@@ -99,17 +237,17 @@ export default function Chat() {
             {/* {dailyStatus.type !== 'premium' && (
                 <div className={cn(
                     "text-xs px-4 py-2 flex items-center justify-between shadow-sm",
-                    dailyStatus.type === 'available' ? "bg-blue-500/10 text-blue-300 border-b border-blue-500/20" :
-                        dailyStatus.type === 'used' ? "bg-green-500/10 text-green-300 border-b border-green-500/20" : ""
+                    dailyStatus.type === 'available' ? "bg-blue-500/10 text-blue-300 border-b border-blue-500/20" : 
+                    dailyStatus.type === 'used' ? "bg-green-500/10 text-green-300 border-b border-green-500/20" : ""
                 )}>
-                    {dailyStatus.type === 'available' && (
+                   {dailyStatus.type === 'available' && (
                         <>
                             <span className="flex items-center gap-2">
                                 🎫 <b>Ficha Diária Disponível:</b> Escolha seu jogo com sabedoria.
                             </span>
                         </>
-                    )}
-                    {dailyStatus.type === 'used' && (
+                   )}
+                   {dailyStatus.type === 'used' && (
                         <>
                             <span className="flex items-center gap-2 truncate">
                                 🟢 <b>Modo Grátis Ativo:</b> {dailyStatus.label}
