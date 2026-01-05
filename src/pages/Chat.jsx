@@ -64,7 +64,7 @@ export default function Chat() {
                 setDailyStatus({ type: 'available' });
             }
         };
-        checkUsage();
+        // checkUsage(); // DISABLED TO FIX CRASH
     }, [user]);
 
     // ... existing event handlers
@@ -95,8 +95,8 @@ export default function Chat() {
                 </div>
             </header>
 
-            {/* [NEW] Daily Limit Banner */}
-            {dailyStatus.type !== 'premium' && (
+            {/* [NEW] Daily Limit Banner (TEMPORARILY DISABLED) */}
+            {/* {dailyStatus.type !== 'premium' && (
                 <div className={cn(
                     "text-xs px-4 py-2 flex items-center justify-between shadow-sm",
                     dailyStatus.type === 'available' ? "bg-blue-500/10 text-blue-300 border-b border-blue-500/20" :
@@ -120,7 +120,7 @@ export default function Chat() {
                         </>
                     )}
                 </div>
-            )}
+            )} */}
 
             {/* Chat Area */}
             <main className="flex-1 p-4 overflow-y-auto w-full max-w-lg mx-auto space-y-4">
