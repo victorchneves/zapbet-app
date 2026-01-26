@@ -14,15 +14,27 @@ export default function Signup() {
     const [loading, setLoading] = useState(false)
 
     const handleSignup = async () => {
+        console.log('[SIGNUP] Starting signup process...', { email, hasPassword: !!password })
         setLoading(true)
-        const { error } = await signUp(email, password)
-        if (error) {
-            alert(error.message)
-        } else {
-            alert(t('account_created'))
-            navigate('/onboarding')
+
+        try {
+            const { data, error } = await signUp(email, password)
+            console.log('[SIGNUP] Supabase response:', { data, error })
+
+            if (error) {
+                console.error('[SIGNUP] Error:', error)
+                alert(`Erro: ${error.message}`)
+            } else {
+                console.log('[SIGNUP] Success! Redirecting to onboarding...')
+                alert(t('account_created'))
+                navigate('/onboarding')
+            }
+        } catch (err) {
+            console.error('[SIGNUP] Unexpected error:', err)
+            alert(`Erro inesperado: ${err.message}`)
+        } finally {
+            setLoading(false)
         }
-        setLoading(false)
     }
 
     return (
