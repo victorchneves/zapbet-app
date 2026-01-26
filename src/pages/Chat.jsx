@@ -10,8 +10,10 @@ import FormattedMessage from '../components/ui/FormattedMessage';
 import { cn } from '../lib/utils';
 import PushToggle from '../components/features/PushToggle';
 import PaywallModal from '../components/modals/PaywallModal';
+import { useTranslation } from 'react-i18next';
 
 export default function Chat() {
+    const { t } = useTranslation();
     const { user, signOut } = useAuth();
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
@@ -22,6 +24,17 @@ export default function Chat() {
     const messagesEndRef = useRef(null);
     const navigate = useNavigate();
     const location = useLocation();
+
+    // [DEBUG] Check Port
+    useEffect(() => {
+        if (window.location.port === '5173') {
+            setMessages(prev => [...prev, {
+                id: Date.now(),
+                role: 'assistant',
+                content: '🚨 **ERRO DE PORTA DETECTADO** 🚨\n\nVocê está acessando pelo endereço errado (porta 5173).\n\n👉 **Por favor, use este link:** [http://localhost:3000/dashboard](http://localhost:3000/dashboard)\n\nO chat só funciona na porta 3000.'
+            }]);
+        }
+    }, []);
 
     // 1. Load History (Thread)
     useEffect(() => {
@@ -125,7 +138,8 @@ export default function Chat() {
                         return;
                     }
                 }
-                throw new Error('Falha na resposta da IA');
+                const errorText = await res.text();
+                throw new Error(`Falha: ${res.status} - ${errorText.substring(0, 50)}`);
             }
 
             const data = await res.json();
@@ -137,7 +151,7 @@ export default function Chat() {
             setMessages(prev => [...prev, {
                 id: Date.now() + 2,
                 role: 'assistant',
-                content: '⚠️ Ocorreu um erro ao processar sua análise. Tente novamente.'
+                content: t('processing_error')
             }]);
         } finally {
             setIsLoading(false);
@@ -164,14 +178,29 @@ export default function Chat() {
         const userMsg = { id: Date.now().toString(), role: 'user', content: input };
         setMessages(prev => [...prev, userMsg]);
         setInput('');
-        setIsLoading(true);
-
         try {
+            const sessionData = await supabase.auth.getSession();
+            const token = sessionData.data.session?.access_token;
+
+            if (!token) {
+                // Not logged in (on this port)
+                alert('Você não está logado neste endereço. Redirecionando para login...');
+                await signOut();
+                navigate('/login');
+                return;
+            }
+
+            console.log('Sending Chat Request:', {
+                url: '/api/ai/chat',
+                hasToken: !!token,
+                payload: { message: input, context: { fixtureId: location.state?.fixtureId } }
+            });
+
             const res = await fetch('/api/ai/chat', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
+                    'Authorization': `Bearer ${token}`
                 },
                 body: JSON.stringify({
                     message: input,
@@ -180,6 +209,16 @@ export default function Chat() {
             });
 
             if (!res.ok) {
+                if (res.status === 401) {
+                    const errorText = await res.text();
+                    if (errorText.includes("Invalid token") || errorText.includes("Missing")) {
+                        alert(t('session_expired'));
+                        await signOut();
+                        navigate('/login');
+                        return;
+                    }
+                }
+
                 if (res.status === 429) {
                     const data = await res.json();
                     if (data.premium_required) {
@@ -188,7 +227,8 @@ export default function Chat() {
                         return;
                     }
                 }
-                throw new Error('Falha na resposta da IA');
+                const errorText = await res.text();
+                throw new Error(`Falha: ${res.status} - ${errorText.substring(0, 50)}`);
             }
 
             const data = await res.json();
@@ -197,11 +237,11 @@ export default function Chat() {
             setMessages(prev => [...prev, aiMsg]);
 
         } catch (error) {
-            console.error(error);
+            console.error('Chat Submit Error:', error);
             setMessages(prev => [...prev, {
                 id: Date.now() + 2,
                 role: 'assistant',
-                content: '⚠️ Erro ao conectar com o modelo. Tente novamente.'
+                content: `⚠️ Erro técnico: ${error.message}` // Exposing actual error for debugging
             }]);
         } finally {
             setIsLoading(false);
@@ -220,10 +260,10 @@ export default function Chat() {
                         <img
                             src="/zapbet-logo.png"
                             alt="ZapBet Logo"
-                            className="h-8 object-contain"
+                            className="h-8 w-8 rounded-full object-cover"
                         />
                         <span className="text-[10px] text-green-400 flex items-center gap-1 ml-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" /> Online
+                            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" /> {t('online')}
                         </span>
                     </div>
                 </div>
@@ -241,18 +281,18 @@ export default function Chat() {
                 )}>
                     {dailyStatus.type === 'available' && (
                         <>
-                            <span className="flex items-center gap-2">
-                                🎫 <b>Ficha Diária Disponível:</b> Escolha seu jogo com sabedoria.
-                            </span>
+                            <p className="text-xs text-yellow-400/90 ml-1">
+                                🎫 <b>{t('daily_analysis_available')}</b> {t('choose_game_to_analyze')}
+                            </p>
                         </>
                     )}
                     {dailyStatus.type === 'used' && (
                         <>
                             <span className="flex items-center gap-2 truncate">
-                                🟢 <b>Modo Grátis Ativo:</b> {dailyStatus.label}
+                                🟢 <b>{t('free_mode_active')}</b> {dailyStatus.label}
                             </span>
                             <button onClick={() => setShowPaywall(true)} className="underline font-bold text-[10px] ml-2 shrink-0">
-                                Trocar Jogo?
+                                {t('change_game')}
                             </button>
                         </>
                     )}
@@ -263,8 +303,8 @@ export default function Chat() {
             <main className="flex-1 p-4 overflow-y-auto w-full max-w-lg mx-auto space-y-4">
                 {messages.length === 0 && (
                     <div className="text-center text-muted-foreground mt-10 text-sm animate-in fade-in zoom-in duration-500">
-                        <p className="mb-2">"O que tem hoje de interessante?"</p>
-                        <p>"Quero algo agressivo hoje"</p>
+                        <p className="mb-2">{t('chat_placeholder_1')}</p>
+                        <p>{t('chat_placeholder_2')}</p>
                     </div>
                 )}
 
@@ -313,20 +353,26 @@ export default function Chat() {
 
             {/* Input Area */}
             <footer className="p-4 bg-card/50 backdrop-blur-md border-t border-border sticky bottom-0">
-                <form onSubmit={handleSubmit} className="max-w-lg mx-auto relative flex items-center gap-2">
-                    <input
-                        type="text"
+                <form onSubmit={handleSubmit} className="max-w-lg mx-auto relative flex items-end gap-2">
+                    <textarea
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
-                        placeholder="Pergunte sobre um jogo..."
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                handleSubmit(e);
+                            }
+                        }}
+                        placeholder={t('ask_about_game')}
                         disabled={isLoading}
-                        className="flex-1 bg-secondary/50 border border-border text-white text-sm rounded-full px-4 py-3 focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground transition-all"
+                        rows={1}
+                        className="flex-1 bg-secondary/50 border border-border text-white text-sm rounded-xl px-4 py-3 focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground transition-all resize-none min-h-[44px] max-h-32"
                     />
                     <Button
                         type="submit"
                         size="icon"
                         disabled={isLoading || !input.trim()}
-                        className="rounded-full w-10 h-10 bg-primary hover:bg-primary/90 transition-all shadow-lg hover:shadow-primary/20"
+                        className="rounded-full w-10 h-10 bg-primary hover:bg-primary/90 transition-all shadow-lg hover:shadow-primary/20 mb-[2px]"
                     >
                         <Send size={18} />
                     </Button>

@@ -17,6 +17,7 @@ export default async function handler(request, response) {
     const supabaseUrl = process.env.VITE_SUPABASE_URL;
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+
     if (!supabaseUrl || !supabaseServiceKey) {
         console.error('Missing Supabase configuration');
         return response.status(500).json({ error: 'Server misconfiguration: Missing Supabase keys.' });
@@ -80,37 +81,29 @@ export default async function handler(request, response) {
         let threadId;
         let openAiThreadId;
 
-        if (!thread) {
+        if (!thread || true) { // FORCE NEW THREAD (DEBUG MODE)
             // Create new OpenAI Thread
             const newOpenAiThread = await openai.beta.threads.create();
             openAiThreadId = newOpenAiThread.id;
 
-            // Save to DB
-            const { data: newThread } = await supabase
-                .from('ai_threads')
-                .insert({
-                    user_id: user.id,
-                    openai_thread_id: openAiThreadId, // Start storing this if schema allows, or just use JSON
-                    messages: []
-                })
-                .select()
-                .single();
-
-            threadId = newThread.id;
-            thread = newThread;
-        } else {
-            // Retrieve existing OpenAI Thread ID from DB
-            // We need to add 'openai_thread_id' to schema or store it in 'metadata' column if it exists
-            // For now, assuming we might need to update schema or perform a check
-            // If we don't have it in DB, we might need to create a new one, but let's assume we add it to the schema.
-            // Wait, schema didn't have 'openai_thread_id'. I should add it.
-            // Fallback if not present (migration needed):
-            openAiThreadId = thread.openai_thread_id;
-            if (!openAiThreadId) {
-                const newOpenAiThread = await openai.beta.threads.create();
-                openAiThreadId = newOpenAiThread.id;
-                await supabase.from('ai_threads').update({ openai_thread_id: openAiThreadId }).eq('id', thread.id);
+            // Save to DB (Update or Insert)
+            if (thread) {
+                await supabase.from('ai_threads').update({ openai_thread_id: openAiThreadId, messages: [] }).eq('id', thread.id);
+            } else {
+                const { data: newThread } = await supabase
+                    .from('ai_threads')
+                    .insert({
+                        user_id: user.id,
+                        openai_thread_id: openAiThreadId,
+                        messages: []
+                    })
+                    .select()
+                    .single();
+                thread = newThread;
             }
+        } else {
+            // ... (original else block unreachable now)
+            openAiThreadId = thread.openai_thread_id;
         }
 
         // [PHASE 2] Fetch Context Data (Top Games & Picks)
@@ -231,36 +224,52 @@ export default async function handler(request, response) {
             }],
             tool_choice: "auto",
             additional_instructions: `
-        [SYSTEM NOTE]
-        1. Tool 'get_match_details': Use query contains keywords: "escalação", "lineup", "stats", "fatos", "odds", "cotação", "favorito", "previsão", "quem ganha".
-           - CRITICAL: You MUST use this tool to get the ODDS and PREDICTIONS. Do not say you don't have them. They are inside this tool.
-           - LINEUPS: If giving lineups for future games (or if confirmed=false), YOU MUST STATE: "⚠️ **Escalação Provável** (A oficial sai ~1h antes do jogo)." Advise user to check back later.
-        2. Tool 'get_standings': Use when query contains: "tabela", "classificação", "líder", "z4", "rebaixamento".
-           - FORMATTING RULE: STRICTLY FORBIDDEN TO USE TABLES OR PIPES (|). The user is on a small screen.
-           - YOU MUST OUTPUT A SIMPLE LIST. Do NOT use code blocks.
-           - Format:
-             "1. Napoli - 82 pts (25V, 7E, 6D)"
-             "2. Inter - 81 pts (24V, 9E, 5D)"
-             "(...)"
-        3. Tool 'check_schedule': Use for future dates.
+        [INSTRUÇÃO PRIORITÁRIA]
+        [INSTRUÇÃO ÚNICA: SIGA O FORMATO]
+        Você é um sistema automatizado. Sua ÚNICA função é preencher o relatório abaixo com os dados REAIS obtidos da ferramenta 'get_match_details'.
+        
+        NÃO escreva introduções. NÃO escreva conclusões. NÃO dê conselhos genéricos.
+        APENAS PREENCHA O MODELO.
 
+        [FERRAMENTAS]
+        1. Use 'get_match_details' para pegar odds e estatísticas.
+        2. Use 'get_standings' apenas se precisar da tabela.
+
+        [MODELO DE RESPOSTA OBRIGATÓRIO]
+        # 📊 Análise: [Time Casa] x [Time Fora]
+
+        ## 🧠 Raio-X (Dados Oficiais)
+        **Forma (Últimos 5)**: 
+        - [Casa]: [Lista de V/E/D]
+        - [Fora]: [Lista de V/E/D]
+        
+        **Médias de Gols**:
+        - [Casa]: [Marcados] | [Sofridos]
+        - [Fora]: [Marcados] | [Sofridos]
+
+        ## 💰 Gestão (${profile.bankroll})
+        - Stake Sugerida: R$ [1 a 3% da banca]
+
+        ## 🎯 Recomendações
+        
+        ### 1. Aposta Segura (Odd ~1.50)
+        - **Entrada**: [Mercado] @ [Odd]
+        - **Motivo**: [CITE O DADO EXATO QUE JUSTIFICA. Ex: "Time A venceu 80% em casa"]
+
+        ### 2. Aposta de Valor (Odd ~2.00)
+        - **Entrada**: [Mercado] @ [Odd]
+        - **Motivo**: [CITE O DADO EXATO]
+
+        ### 3. Aposta Ousada (Odd 3.00+)
+        - **Entrada**: [Mercado] @ [Odd]
+        - **Motivo**: [CITE O DADO EXATO]
+
+        ---
+        **Pergunta**: [Uma pergunta curta sobre a estratégia?]
+        
         [USER CONTEXT]
         Bankroll: ${profile.bankroll}
         Risk Profile: ${profile.risk_profile}
-        Subscription: ${profile.subscription_status}
-        
-        [TODAY'S DATA REPOSITORY]
-        Date: ${today}
-
-        [TODAY'S DATA REPOSITORY]
-        Date: ${today}
-        
-        Daily Top Games (Curated): ${topGamesData}
-        
-        ALL TODAY MATCHES (Database):
-        ${fixturesList}
-        
-        Daily Picks: ${picksData}
       `
         });
 
@@ -268,15 +277,15 @@ export default async function handler(request, response) {
 
         // 6. Poll for Completion (with Tool Handling)
         let runStatus = await openai.beta.threads.runs.retrieve(openAiThreadId, run.id);
-        console.log(`[DEBUG] Initial Run Status: ${runStatus.status}`);
+        console.log(`[DEBUG] Initial Run Status: ${runStatus.status} `);
 
         let attempts = 0;
-        const maxAttempts = 30; // Safety timeout
+        const maxAttempts = 60; // Increased timeout for deep analysis
 
         while (runStatus.status !== 'completed' && attempts < maxAttempts) {
             await new Promise(resolve => setTimeout(resolve, 1000));
             runStatus = await openai.beta.threads.runs.retrieve(openAiThreadId, run.id);
-            console.log(`[DEBUG] Polling Status: ${runStatus.status}`);
+            console.log(`[DEBUG] Polling Status: ${runStatus.status} `);
             attempts++;
 
             if (runStatus.status === 'requires_action') {
@@ -287,10 +296,12 @@ export default async function handler(request, response) {
                 for (const toolCall of toolCalls) {
                     if (toolCall.function.name === 'get_match_details') {
                         const args = JSON.parse(toolCall.function.arguments);
-                        console.log(`[TOOL] Executing get_match_details for ID: ${args.fixture_id}`);
+                        // Ensure fixture_id is integer
+                        const requestedFixtureId = parseInt(args.fixture_id, 10);
+                        console.log(`[TOOL] Executing get_match_details for ID: ${requestedFixtureId} `);
 
                         try {
-                            // [SMART LIMIT LOGIC]
+                            // [SMART LIMIT LOGIC - STRICT]
                             // Check limits before fetching data
                             if (!isPremium) {
                                 const today = new Date().toISOString().split('T')[0];
@@ -303,17 +314,17 @@ export default async function handler(request, response) {
                                     .eq('date', today);
 
                                 const unlockedFixtureIds = existingUnlocks?.map(u => u.fixture_id) || [];
-                                const isNewFixture = !unlockedFixtureIds.includes(args.fixture_id);
+                                const isNewFixture = !unlockedFixtureIds.includes(requestedFixtureId);
 
                                 // If trying to access a 2nd fixture (limit is 1)
                                 if (isNewFixture && unlockedFixtureIds.length >= 1) {
-                                    console.log(`[LIMIT LIMIT] User ${user.id} tried to access 2nd game (ID: ${args.fixture_id})`);
+                                    console.log(`[LIMIT LIMIT] User ${user.id} tried to access 2nd game(ID: ${requestedFixtureId})`);
 
                                     toolOutputs.push({
                                         tool_call_id: toolCall.id,
                                         output: JSON.stringify({
                                             error: "LIMIT_REACHED",
-                                            message: "SYSTEM ALERT: User is on Free Plan. They have already analyzed one match today. They cannot analyze another one. Please politely apologize and ask them to Upgrade to Premium to analyze unlimited matches."
+                                            message: "BLOCK_ANALYSIS: The user is on the Free Plan and has already analyzed their 1 allowed match for today. DO NOT provide any analysis. Politely inform them they reached the daily limit and must wait for tomorrow or upgrade to Premium."
                                         })
                                     });
                                     continue; // Skip the actual fetch
@@ -324,18 +335,33 @@ export default async function handler(request, response) {
                                     await supabase.from('daily_unlocked_fixtures').insert({
                                         user_id: user.id,
                                         date: today,
-                                        fixture_id: args.fixture_id
+                                        fixture_id: requestedFixtureId
                                     });
                                 }
                             }
 
-                            const details = await getMatchDetails(args.fixture_id, supabase, process.env.API_FOOTBALL_KEY);
-                            // Summarize output to save tokens
+                            console.log('[TOOL] API Key Present:', !!process.env.API_FOOTBALL_KEY);
+                            const details = await getMatchDetails(requestedFixtureId, supabase, process.env.API_FOOTBALL_KEY);
+                            // FAIL-PROOF DATA ASSEMBLY
                             const summary = {
-                                lineups: details.lineups?.payload, // Pass full payload for AI analysis
-                                events: details.events?.payload,
-                                stats: details.stats?.payload
+                                lineups: (details.lineups?.payload && details.lineups.payload.length > 0)
+                                    ? details.lineups.payload
+                                    : "DATA_UNAVAILABLE (Use predicted lineups if available)",
+
+                                stats: (details.stats?.payload && Object.keys(details.stats.payload).length > 0)
+                                    ? details.stats.payload
+                                    : "DATA_UNAVAILABLE (Game likely not started)",
+
+                                odds: (details.odds?.payload && details.odds.payload.length > 0)
+                                    ? details.odds.payload
+                                    : "DATA_UNAVAILABLE (Warn user: Low liquidity or market suspended)",
+
+                                predictions: details.predictions?.payload || "DATA_UNAVAILABLE",
+
+                                standings: details.fixture?.leagues?.standings || "DATA_UNAVAILABLE"
                             };
+
+                            console.log('[TOOL] FINAL PAYLOAD TO AI:', JSON.stringify(summary, null, 2));
 
                             toolOutputs.push({
                                 tool_call_id: toolCall.id,
@@ -358,15 +384,15 @@ export default async function handler(request, response) {
                             const { data: existingFixtures } = await supabase
                                 .from('fixtures')
                                 .select('id, date_utc, leagues(name), home:teams!home_team_id(name), away:teams!away_team_id(name)')
-                                .filter('date_utc', 'gte', `${targetDate}T00:00:00`)
-                                .filter('date_utc', 'lte', `${targetDate}T23:59:59`)
+                                .filter('date_utc', 'gte', `${targetDate} T00:00:00`)
+                                .filter('date_utc', 'lte', `${targetDate} T23: 59: 59`)
                                 .limit(50);
 
                             let fixturesToReturn = existingFixtures || [];
 
                             // 2. If empty, Auto-Sync
                             if (fixturesToReturn.length === 0) {
-                                console.log(`[TOOL] No games found in DB for ${targetDate}. Auto-syncing...`);
+                                console.log(`[TOOL] No games found in DB for ${targetDate}.Auto - syncing...`);
                                 const syncResult = await syncFixtures(targetDate, supabase, process.env.API_FOOTBALL_KEY);
 
                                 // Re-query after sync (or use sync result formatted)
@@ -383,7 +409,7 @@ export default async function handler(request, response) {
 
                             // 3. Format output
                             const formattedList = fixturesToReturn.map(f =>
-                                `- [ID: ${f.id}] [${f.leagues?.name || f.leagues?.name}] ${f.home?.name} vs ${f.away?.name} at ${new Date(f.date_utc).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
+                                `- [ID: ${f.id}][${f.leagues?.name || f.leagues?.name}] ${f.home?.name} vs ${f.away?.name} at ${new Date(f.date_utc).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} `
                             ).join('\n') || "No games found for this date.";
 
                             toolOutputs.push({
@@ -406,9 +432,9 @@ export default async function handler(request, response) {
 
                             if (standings && standings.length > 0 && standings[0].league && standings[0].league.standings) {
                                 const table = standings[0].league.standings[0];
-                                formattedStandings = `**Classificação ${standings[0].league.name} (${standings[0].league.season})**\n\n`;
+                                formattedStandings = `** Classificação ${standings[0].league.name} (${standings[0].league.season})**\n\n`;
                                 formattedStandings += table.map(t =>
-                                    `${t.rank}. ${t.team.name} - ${t.points} pts (${t.all.played}J ${t.all.win}V ${t.all.draw}E ${t.all.lose}D)`
+                                    `${t.rank}. ${t.team.name} - ${t.points} pts(${t.all.played}J ${t.all.win}V ${t.all.draw}E ${t.all.lose}D)`
                                 ).join('\n');
                             }
 
@@ -437,7 +463,7 @@ export default async function handler(request, response) {
 
             if (['failed', 'cancelled', 'expired'].includes(runStatus.status)) {
                 console.error('Run failed:', runStatus.last_error);
-                return response.status(500).json({ error: `AI processing failed with status: ${runStatus.status}` });
+                return response.status(500).json({ error: `AI processing failed with status: ${runStatus.status} ` });
             }
         }
 
@@ -479,3 +505,4 @@ export default async function handler(request, response) {
         return response.status(500).json({ error: error.message });
     }
 }
+

@@ -3,8 +3,10 @@ import { fetchTodayFixtures } from '../../services/dataService';
 import { Button } from '../ui/button';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
+import { useTranslation } from 'react-i18next';
 
 export default function TopGamesWidget() {
+    const { t } = useTranslation();
     const [games, setGames] = useState([]);
     const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
@@ -22,18 +24,18 @@ export default function TopGamesWidget() {
         load();
     }, []);
 
-    if (loading) return <div className="p-4 text-center text-muted-foreground animate-pulse">Carregando jogos...</div>;
+    if (loading) return <div className="p-4 text-center text-muted-foreground animate-pulse">{t('loading_games')}</div>;
 
     return (
         <section className="space-y-3">
             <div className="flex justify-between items-center">
-                <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Top Games do Dia</h3>
-                <Button variant="link" className="text-xs text-primary p-0 h-auto" onClick={() => navigate('/top-games')}>Ver todos</Button>
+                <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">{t('top_games_today')}</h3>
+                <Button variant="link" className="text-xs text-primary p-0 h-auto" onClick={() => navigate('/top-games')}>{t('see_all')}</Button>
             </div>
 
             {games.length === 0 ? (
                 <div className="bg-card border border-border rounded-xl p-4 text-center text-muted-foreground text-sm">
-                    Nenhum jogo em destaque hoje.
+                    {t('no_top_games')}
                 </div>
             ) : (
                 <div className="space-y-3">
@@ -48,7 +50,7 @@ export default function TopGamesWidget() {
                                     {/* Logo placeholder if broken */}
                                     <span className="truncate max-w-[100px]">{game.home?.name || 'Home'}</span>
                                 </div>
-                                <span className="text-muted-foreground text-xs px-2">vs</span>
+                                <span className="text-muted-foreground text-xs px-2">{t('vs')}</span>
                                 <div className="font-bold text-white flex items-center gap-2">
                                     <span className="truncate max-w-[100px]">{game.away?.name || 'Away'}</span>
                                 </div>
@@ -61,7 +63,7 @@ export default function TopGamesWidget() {
                                     }
                                 })}
                             >
-                                Analisar com IA
+                                {t('analyze_ai')}
                             </button>
                         </div>
                     ))}

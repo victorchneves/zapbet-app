@@ -58,7 +58,7 @@ export default function DailyPicks() {
         }
         const badges = {
             conservative: { icon: '🛡️', color: 'bg-green-500/20 text-green-400', label: 'Confiança Alta' },
-            moderate: { icon: '⚖️', color: 'bg-yellow-500/20 text-yellow-400', label: 'Valor Potencial' },
+            moderate: { icon: '', color: 'bg-yellow-500/20 text-yellow-400', label: 'Valor Potencial' },
             aggressive: { icon: '🔥', color: 'bg-red-500/20 text-red-400', label: 'Alto Risco' }
         };
         return badges[level] || badges.moderate;

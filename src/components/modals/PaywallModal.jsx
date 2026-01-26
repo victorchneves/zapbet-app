@@ -1,7 +1,9 @@
 import { X, Lock } from 'lucide-react';
 import { Button } from '../ui/button';
+import { useTranslation } from 'react-i18next';
 
 export default function PaywallModal({ isOpen, onClose, context = 'general' }) {
+    const { t } = useTranslation();
     if (!isOpen) return null;
 
     const handleUpgrade = () => {
@@ -28,19 +30,17 @@ export default function PaywallModal({ isOpen, onClose, context = 'general' }) {
                         <Lock className="w-6 h-6 text-primary" />
                     </div>
                     <h2 className="text-2xl font-bold text-white text-center">
-                        Acesso completo ao ZapBet
+                        {t('full_access_title')}
                     </h2>
                 </div>
 
                 {/* Main Copy */}
                 <div className="space-y-4 text-sm text-muted-foreground leading-relaxed">
                     <p>
-                        O ZapBet analisa dezenas de jogos todos os dias.
-                        Apenas leituras que passam no critério do modelo são liberadas.
+                        {t('paywall_copy_1')}
                     </p>
                     <p>
-                        O plano gratuito permite conhecer a lógica.
-                        O acesso completo é para quem busca consistência e método.
+                        {t('paywall_copy_2')}
                     </p>
                 </div>
 
@@ -48,29 +48,29 @@ export default function PaywallModal({ isOpen, onClose, context = 'general' }) {
                 <ul className="space-y-3 py-4 border-y border-border">
                     <li className="flex items-start gap-3 text-sm">
                         <span className="text-primary font-bold">✓</span>
-                        <span className="text-white">Leitura Principal diária</span>
+                        <span className="text-white">{t('benefit_daily_pick')}</span>
                     </li>
                     <li className="flex items-start gap-3 text-sm">
                         <span className="text-primary font-bold">✓</span>
-                        <span className="text-white">Todas as leituras do dia</span>
+                        <span className="text-white">{t('benefit_all_picks')}</span>
                     </li>
                     <li className="flex items-start gap-3 text-sm">
                         <span className="text-primary font-bold">✓</span>
-                        <span className="text-white">Chat com IA sem limites</span>
+                        <span className="text-white">{t('benefit_unlimited_chat')}</span>
                     </li>
                     <li className="flex items-start gap-3 text-sm">
                         <span className="text-primary font-bold">✓</span>
-                        <span className="text-white">Histórico completo para análise e padrão</span>
+                        <span className="text-white">{t('benefit_history')}</span>
                     </li>
                     <li className="flex items-start gap-3 text-sm">
                         <span className="text-primary font-bold">✓</span>
-                        <span className="text-white">Push diário com a leitura disponível</span>
+                        <span className="text-white">{t('benefit_push')}</span>
                     </li>
                 </ul>
 
                 {/* Value Anchor */}
                 <p className="text-xs text-center text-muted-foreground italic">
-                    O acesso premium custa menos que uma aposta mal feita.
+                    {t('value_anchor')}
                 </p>
 
                 {/* CTA */}
@@ -78,13 +78,12 @@ export default function PaywallModal({ isOpen, onClose, context = 'general' }) {
                     onClick={() => window.location.href = 'https://pay.kirvano.com/44b1f1a1-c154-4a1f-bd9e-058defac0e76'}
                     className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-bold h-12 text-base"
                 >
-                    Ativar acesso completo
+                    {t('activate_full_access')}
                 </Button>
 
                 {/* Microcopy */}
-                <p className="text-center text-xs text-muted-foreground leading-relaxed">
-                    Cancele quando quiser.<br />
-                    Sem promessa de lucro. Apenas método e disciplina.
+                <p className="text-center text-xs text-muted-foreground leading-relaxed whitespace-pre-line">
+                    {t('cancel_anytime')}
                 </p>
             </div>
         </div>

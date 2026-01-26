@@ -47,7 +47,7 @@ export async function subscribeToPush() {
     // Currently our subscribe endpoint expects data.
     // Let's pass user_id if logged in.
 
-    const res = await fetch('/api/push/subscribe', {
+    const res = await fetch('/api/push/actions?action=subscribe', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
